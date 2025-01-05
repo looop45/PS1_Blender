@@ -1,0 +1,43 @@
+__pycache__/
+# Build artifacts
+build/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+*.ilk
+*.pdb
+*.lib
+*.exp
+
+# CMake generated files
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+CMakeFiles/
+CTestTestfile.cmake
+Makefile
+*.cbp
+CMakeScripts/
+compile_commands.json
+
+# IDE-specific files
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.ncb
+*.user
+*.aps
+*.sdf
+
+# OS-specific files
+.DS_Store
+Thumbs.db
