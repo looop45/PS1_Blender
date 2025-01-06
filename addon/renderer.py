@@ -3,17 +3,58 @@ import os
 import subprocess
 import socket
 import array
+import threading
+import time
+import sys
+import queue
 
 from . import base
+from .host import server_host
+
 
 @base.register_class
 class PS1RenderEngine(bpy.types.RenderEngine):
     bl_idname = "PS1"
     bl_label = "PS1 Render Engine"
 
+    host_addr = "127.0.0.1"
+    port = 6969
+    host = None
+
+    connection = None
+
     def __init__(self):
-            self.scene_data = None
-            self.draw_data = None
+        self.scene_data = None
+        self.draw_data = None
+
+        #start host
+        self.host = server_host(self.host_addr, self.port)
+
+        time.sleep(1)
+
+        #start client
+        try:
+            '''result = subprocess.run(
+                ["/Users/connermurray/dev/ps1_blender_addon/build/PS1_Render_Engine"],  # Replace with the actual path to your C++ client executable
+                check=True,
+                text=True,
+                stdout=sys.stdout
+            )'''
+            p = subprocess.Popen( ["/Users/connermurray/dev/ps1_blender_addon/build/PS1_Render_Engine"], stdout=sys.stdout, stderr=sys.stderr)
+            #p.communicate()
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error running C++ client: {e}")
+            print(e.output)
+
+        self.host.connect()
+
+        #server_thread = threading.Thread(target=update_thread, daemon=True, args=(self.host, self))
+        #server_thread.start()
+
+        print(self.host.conn)
+
+
 
     def __del__(self):
         pass
@@ -48,39 +89,12 @@ class PS1RenderEngine(bpy.types.RenderEngine):
     # should be read from Blender in the same thread. Typically a render
     # thread will be started to do the work while keeping Blender responsive.
     def view_update(self, context, depsgraph):
-        region = context.region
-        view3d = context.space_data
-        scene = depsgraph.scene
-
-        # Get viewport dimensions
-        dimensions = region.width, region.height
-
-        if not self.scene_data:
-            # First time initialization
-            self.scene_data = []
-            first_time = True
-
-            # Loop over all datablocks used in the scene.
-            for datablock in depsgraph.ids:
-                pass
-                # this is where data will be translated from blender to the renderer (server send info)
-
-
-        else:
-            first_time = False
-
-            # Test which datablocks changed
-            for update in depsgraph.updates:
-                print("Datablock updated: ", update.id.name)
-
-            # Test if any material was added, removed or changed.
-            if depsgraph.id_type_updated('MATERIAL'):
-                print("Materials updated")
-
-        # Loop over all object instances in the scene.
-        if first_time or depsgraph.id_type_updated('OBJECT'):
-            for instance in depsgraph.object_instances:
-                pass
+        # send info to client
+        # Send a test string to the client
+        test_string = "Hello from Python Server!"
+        self.host.conn.sendall(test_string.encode('utf-8'))
+        print(f"Sent: {test_string}")
+            
 
 
     # For viewport renders, this method is called whenever Blender redraws
@@ -89,6 +103,10 @@ class PS1RenderEngine(bpy.types.RenderEngine):
     # Blender will draw overlays for selection and editing on top of the
     # rendered image automatically.
     def view_draw(self, context, depsgraph):
+        # Recv pixel data
+
+        self.host.conn.recv()
+
         # Lazily import GPU module, so that the render engine works in
         # background mode where the GPU module can't be imported by default.
         import gpu
