@@ -4,10 +4,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "client.h"
+#include "host.h"
 
 int main()
 {
-    client();
+    host();
     return 0;
 }
