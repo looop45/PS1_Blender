@@ -7,26 +7,40 @@
 #include <string.h>
 
 #include "json.hpp"
+#include "CommandQueue.h"
 
-// for convenience
 using json = nlohmann::json;
-//using namespace std;
 
 const char* SOCKET_PATH = "/tmp/ps1_render";
 
-int host()
+class host
+{
+    public:
+        host() {}
+
+        int start_host();
+        void stop_host();
+        int connect_client();
+        int handle_client(CommandQueue& command_queue);
+    
+    private:
+        int server_sock;
+        int client_sock;
+        sockaddr_un addr;
+};
+
+int host::start_host()
 {
     unlink(SOCKET_PATH);
 
     // Create a UNIX domain socket
-    int server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (server_sock < 0) {
         std::cerr << "Error creating socket\n";
         return 1;
     }
 
     // Set up the socket address structure
-    sockaddr_un addr;
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
 
@@ -46,10 +60,15 @@ int host()
 
     std::cout << "Server listening on port " << SOCKET_PATH << "...\n";
 
+    return server_sock;
+}
+
+int host::connect_client()
+{
     // Accept a client connection
     sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    int client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
+    client_sock = accept(server_sock, (struct sockaddr*)&client_addr, &client_len);
     if (client_sock < 0) {
         std::cerr << "Failed to accept client\n";
         close(server_sock);
@@ -58,6 +77,11 @@ int host()
 
     std::cout << "Client connected\n";
 
+    return client_sock;
+}
+
+int host::handle_client(CommandQueue& command_queue)
+{
     // Receive and send data
     char buffer[1024];
     while (true) {
@@ -65,7 +89,7 @@ int host()
         int bytes_received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
         if (bytes_received <= 0) {
             std::cout << "Client disconnected\n";
-            break;
+            return 0;
         }
         std::cout << "Server end Received: " << buffer << "\n";
 
@@ -85,11 +109,15 @@ int host()
             return -1;
         }
     }
+}
 
 
+void host::stop_host()
+{
     // Clean up
     close(client_sock);
     close(server_sock);
 
-    return 0;
+    return;
 }
+

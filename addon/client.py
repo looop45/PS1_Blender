@@ -34,7 +34,7 @@ class server_client():
 
     def draw_scene(self, camera, dimensions):
         pass
-    
+     
 
 API_ENUM = [
             "UPDATE",
