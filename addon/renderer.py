@@ -91,18 +91,19 @@ class PS1RenderEngine(bpy.types.RenderEngine):
         scene = depsgraph.scene
 
         # Get viewport dimensions
-        dimensions = region.width, region.height
+        dimensions = [region.width, region.height]
 
         #get display info from renderer
-        try:
-            message = "draw"
-            self.client.client_sock.sendall(message.encode('utf-8'))
-        except Exception as e:
-            print(f"Error: {e}")
+        self.client.draw_scene("Haha", dimensions)
 
-        value = self.client.client_sock.recv(1024)
-        value = json.loads(value)['draw_data']
-        print(value)
+        value = self.client.recv()
+        print("Client Receiving Pixel Buffer!")
+
+        #print("message is", value)
+
+        length = len(value)
+        value = json.loads(value)['pixel_buffer']
+        print(length)
 
         # Bind shader that converts from scene linear to display space,
         gpu.state.blend_set('ALPHA_PREMULT')
@@ -124,8 +125,8 @@ class CustomDrawData:
         self.dimensions = dimensions
         width, height = dimensions
 
-        pixels = width * height * value
-        pixels = gpu.types.Buffer('FLOAT', width * height * 4, pixels)
+        #pixels = width * height * value
+        pixels = gpu.types.Buffer('FLOAT', width * height * 4, value)
 
         # Generate texture
         self.texture = gpu.types.GPUTexture((width, height), format='RGBA16F', data=pixels)

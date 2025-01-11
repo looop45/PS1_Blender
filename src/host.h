@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 
+#include "DrawData.h"
 #include "json.hpp"
 #include "CommandQueue.h"
 
@@ -21,12 +22,14 @@ class host
         int start_host();
         void stop_host();
         int connect_client();
-        int handle_client(CommandQueue& command_queue);
+        int handle_client(CommandQueue& command_queue, DrawData& pixel_buffer);
     
     private:
         int server_sock;
         int client_sock;
         sockaddr_un addr;
+
+        std::string recv_message();
 };
 
 int host::start_host()
@@ -80,35 +83,45 @@ int host::connect_client()
     return client_sock;
 }
 
-int host::handle_client(CommandQueue& command_queue)
+int host::handle_client(CommandQueue& command_queue, DrawData& pixel_buffer)
 {
-    // Receive and send data
-    char buffer[1024];
-    while (true) {
-        memset(buffer, 0, sizeof(buffer));
-        int bytes_received = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
-        if (bytes_received <= 0) {
-            std::cout << "Client disconnected\n";
-            return 0;
+        std::string message = recv_message();
+
+        json received_data;
+
+        try {
+            std::string jsonString(message);
+            received_data = json::parse(jsonString);
         }
-        std::cout << "Server end Received: " << buffer << "\n";
-
-        // Echo data back to client
-        json value = {
-            {"draw_data", {1.0, 0.0, 0.0, 1.0}}
-            };
-
-        std::string data = value.dump();
-
-        std::cout << "Server sending..." << data << std::endl;
-        
-        if (send(client_sock, data.c_str(), data.length(), 0) < 0)
+        catch (const json::parse_error& e)
         {
-            std::cerr << "Send failed!" << std::endl;
-            close(client_sock);
-            return -1;
+            std::cerr << "JSON parsing error: " << e.what() << std::endl;
         }
-    }
+        catch (const std::exception& e)
+        {
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+
+        command_queue.push(received_data);
+
+        //for testing, assuming draw on each call
+        std::vector<uint8_t> frame;
+        if (pixel_buffer.read(frame))
+        {
+            json message;
+            message["pixel_buffer"] = frame;
+            std::string data = message.dump();
+            data.append("\n\r\n\r");
+            //std::cout << "Server sending pixel data!" << data << std::endl;
+            std::cout << "Length: " << data.length() << std::endl;
+        
+            if (send(client_sock, data.c_str(), data.length(), 0) < 0)
+            {
+                std::cerr << "Send failed!" << std::endl;
+                close(client_sock);
+                return -1;
+            }
+        }
 }
 
 
@@ -121,3 +134,27 @@ void host::stop_host()
     return;
 }
 
+std::string host::recv_message()
+{
+    // Receive and send data
+    const std::string delimiter = "\n\r\n\r";
+    char buffer[4096];
+    std::string received_data;
+    while (true) {
+        memset(buffer, 0, 4096);
+        int bytes_received = recv(client_sock, buffer, 4096 - 1, 0);
+        if (bytes_received <= 0) {
+            std::cout << "Client disconnected\n";
+            return 0;
+        }
+        received_data.append(buffer, bytes_received);
+
+        // Check if the delimiter is present
+        if (received_data.find(delimiter) != std::string::npos) {
+            std::cout << "Message received:\n" << received_data << "\n";
+            break;
+        }
+    }
+    std::string response = received_data.substr(0, received_data.find(delimiter));
+    return response;
+}

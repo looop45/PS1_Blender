@@ -41,3 +41,6 @@ compile_commands.json
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# dev scripts
+/scripts
