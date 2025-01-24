@@ -7,15 +7,20 @@ import threading
 import time
 import sys
 import json
+import numpy as np
 
 from . import base
+from .engine import *
 from .client import *
 
 
-@base.register_class
+@base.register_class 
 class PS1RenderEngine(bpy.types.RenderEngine):
     bl_idname = "PS1"
     bl_label = "PS1 Render Engine"
+
+    display_thread = None
+    connected = False
 
     def __init__(self):
         self.scene_data = None
@@ -23,6 +28,7 @@ class PS1RenderEngine(bpy.types.RenderEngine):
 
         #start Host
         try:
+            pass
             p = subprocess.Popen( ["/Users/connermurray/dev/ps1_blender_addon/build/PS1_Render_Engine"], 
                                  stdout=sys.stdout, 
                                  stderr=sys.stderr
@@ -34,11 +40,13 @@ class PS1RenderEngine(bpy.types.RenderEngine):
 
         time.sleep(1)
 
-        self.client = server_client()
+        self.engine = Engine()
+        self.renderedView = False
+        self.connected = True
 
 
     def __del__(self):
-        self.client.client_sock.close()
+        self.engine.stop()
         print("Connection closed")
     
      # This is the method called by Blender for both final renders (F12) and
@@ -83,50 +91,67 @@ class PS1RenderEngine(bpy.types.RenderEngine):
     # Blender will draw overlays for selection and editing on top of the
     # rendered image automatically.
     def view_draw(self, context, depsgraph):
-        # Lazily import GPU module, so that the render engine works in
-        # background mode where the GPU module can't be imported by default.
-        import gpu
+        if (not self.connected):
+            print("Connection not started yet")
+            return
+        #print("Starting Draw Request...")
+        self.region = context.region
+        self.scene = depsgraph.scene #This is a huge blunder, don't know a way around it yet
 
-        region = context.region
-        scene = depsgraph.scene
+        # Set render flag  to false
+        self.renderedView = False
 
         # Get viewport dimensions
-        dimensions = [region.width, region.height]
+        self.width = int(self.region.width)//2
+        self.height = int(self.region.height)//2
 
         #get display info from renderer
-        self.client.draw_scene("Haha", dimensions)
+        self.engine.draw_request("Camera", self.width, self.height) # camera placeholder
+        # Wait until the entire frame has been received
 
-        value = self.client.recv()
-        print("Client Receiving Pixel Buffer!")
+        while not self.renderedView:
+            self.engine.client.receive_data( self )
 
-        #print("message is", value)
 
-        length = len(value)
-        value = json.loads(value)['pixel_buffer']
-        print(length)
+    def processMessage(self, header_sizeBytes, header_messageType, data):
+        if header_messageType == ServerMessage.Result:
 
-        # Bind shader that converts from scene linear to display space,
-        gpu.state.blend_set('ALPHA_PREMULT')
-        self.bind_display_space_shader(scene)
+            # Lazily import GPU module, so that the render engine works in
+            # background mode where the GPU module can't be imported by default.
+            import gpu
 
-        if not self.draw_data or self.draw_data.dimensions != dimensions:
-            self.draw_data = CustomDrawData(dimensions, value)
+            num_floats = len(data) // struct.calcsize('f')  # 'f' format for 4-byte floats
 
-        self.draw_data.draw()
+            # Unpack the byte data into a list of floats
+            data = struct.unpack(f'{num_floats}f', data)
 
-        self.unbind_display_space_shader()
-        gpu.state.blend_set('NONE')
+            dimensions = (self.width, self.height)
+
+            #print("Actual: ", len(data), " Expected: ", width * height * 4)
+
+            # Bind shader that converts from scene linear to display space,
+            gpu.state.blend_set('ALPHA_PREMULT')
+            self.bind_display_space_shader(self.scene)
+            
+            self.draw_data = CustomDrawData(dimensions, data)
+
+            self.draw_data.draw()
+
+            self.unbind_display_space_shader()
+            gpu.state.blend_set('NONE')
+            self.renderedView = True
+
+
 
 class CustomDrawData:
-    def __init__(self, dimensions, value):
+    def __init__(self, dimensions, pixels):
         import gpu
 
         # Generate dummy float image buffer
         self.dimensions = dimensions
         width, height = dimensions
 
-        #pixels = width * height * value
-        pixels = gpu.types.Buffer('FLOAT', width * height * 4, value)
+        pixels = gpu.types.Buffer('FLOAT', width * height * 4, pixels)
 
         # Generate texture
         self.texture = gpu.types.GPUTexture((width, height), format='RGBA16F', data=pixels)
@@ -140,7 +165,7 @@ class CustomDrawData:
 
     def draw(self):
         from gpu_extras.presets import draw_texture_2d
-        draw_texture_2d(self.texture, (0, 0), self.texture.width, self.texture.height)
+        draw_texture_2d(self.texture, (0, 0), self.texture.width*2, self.texture.height*2)
 
 def get_panels():
     exclude_panels = {

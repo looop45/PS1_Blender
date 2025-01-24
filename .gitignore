@@ -1,6 +1,7 @@
 __pycache__/
 # Build artifacts
 build/
+debug/
 bin/
 *.o
 *.a

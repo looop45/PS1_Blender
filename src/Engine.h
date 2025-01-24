@@ -1,30 +1,29 @@
-#include "DrawData.h"
+#pragma once
+#include "PixelBuffer.h"
 #include "Camera.h"
-#include "json.hpp"
 
 #include <glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 
-using json = nlohmann::json;
-
 class Engine
 {
     public:
-        Engine();
+        Engine(std::shared_ptr<PixelBuffer>& buffer);
         ~Engine();
 
-        std::vector<uint8_t> handleCommand(const json& cmd);
+        void draw(Camera camera, int width, int height);
+
 
     private:
-        std::vector<uint8_t> draw(Camera camera, int width, int height);
-
         void InitGLFW(const char* title);
         bool InitGlad();
         void ShutdownGLFW();
+        GLuint texture;
+        GLuint framebuffer;
 
         GLFWwindow* window;
-        
+        std::shared_ptr<PixelBuffer> buffer;
 
 };
 

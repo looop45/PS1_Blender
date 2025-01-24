@@ -1,7 +1,7 @@
 #include "Engine.h"
 
 //Constructor
-Engine::Engine()
+Engine::Engine(std::shared_ptr<PixelBuffer>& buffer)
 {
     // Initialize OpenGL context here.
     InitGLFW("PS1 Render");
@@ -10,35 +10,15 @@ Engine::Engine()
     {
         std::cout << "Failed to launch window!" << std::endl;
     }
-}
+    
+    this->buffer = buffer;
 
-Engine::~Engine()
-{
-    ShutdownGLFW();
-}
-
-std::vector<uint8_t> Engine::handleCommand(const json& cmd)
-{
-    if (cmd["cmd"].get<std::string>() == "DRAW")
-    {
-        Camera camera;
-        std::vector<int> dimensions = cmd["data"]["dimensions"].get<std::vector<int>>();
-        
-        return this->draw(camera, dimensions.at(0), dimensions.at(1));
-    }
-}
-
-std::vector<uint8_t> Engine::draw(Camera camera, int width, int height)
-{
-    float vertices[] = 
+     float vertices[] = 
     {
         -0.5f, -0.5f, 0.0f,
         0.5f, -0.5f, 0.0f,
         0.0f,  0.5f, 0.0f
     };
-
-    //update frame buffer
-    glViewport(0, 0, width, height);
 
     //Hello Triangle
     unsigned int VBO;
@@ -98,27 +78,56 @@ std::vector<uint8_t> Engine::draw(Camera camera, int width, int height)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    
-
-    //check and call events and swap the buffers
-    glfwPollEvents();
-
     //ImGui::ShowDemoWindow(); // Show demo window! :)
 
     // Rendering
+    glUseProgram(shaderProgram);
+    glBindVertexArray(VAO);
+
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER,framebuffer);
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);    
+
+}
+
+Engine::~Engine()
+{
+    ShutdownGLFW();
+}
+
+void Engine::draw(Camera camera, int width, int height)
+{
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+   
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glViewport(0, 0, width, height);
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    glUseProgram(shaderProgram);
-    glBindVertexArray(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    glfwSwapBuffers(window);
+    std::vector<float> pixels(width * height * 4);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, pixels.data());
+        std::cout << "Drew some stuff" << " " << width << ", " << height << std::endl;
 
-    std::vector<uint8_t> pixels(width * height * 4);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cerr << "OpenGL error: " << error << std::endl;
+        return;
+    }
 
-    return pixels;
+    //std::cout << "Server: Pixel count " << pixels.size() << std::endl;
+    /*std::cout << "First pixel: R=" << (int)pixels[0] 
+          << ", G=" << (int)pixels[1]
+          << ", B=" << (int)pixels[2]
+          << ", A=" << (int)pixels[3] << std::endl;
+   
+    //std::cout << "Buffer use count: " << buffer.use_count() << std::endl;*/
+    buffer->write(pixels);
+
 }
 
 void Engine::InitGLFW(const char* title)

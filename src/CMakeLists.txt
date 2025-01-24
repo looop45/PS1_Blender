@@ -15,7 +15,7 @@ target_sources(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/CommandQueue.h
         ${CMAKE_CURRENT_SOURCE_DIR}/Engine.h
         ${CMAKE_CURRENT_SOURCE_DIR}/Engine.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/DrawData.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/DrawData.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelBuffer.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelBuffer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/vendors/include/json.hpp
 )

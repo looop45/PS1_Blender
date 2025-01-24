@@ -2,71 +2,88 @@ import socket
 import sys
 import json
 import os
+import struct
+import time
 
 SOCKET_PATH = '/tmp/ps1_render'
 
-class server_client():
+class ClientMessage:
+    Start, \
+    Stop, \
+    Update, \
+    Draw, \
+    NumClientMessages = range(5)
+
+class ServerMessage:
+    Result, \
+    NumServerMessages = range(2)
+
+
+class client():
 
     client_sock = None
 
     def __init__(self):
         
-        try:
-            self.client_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.client_sock.settimeout(5)
-            self.client_sock.connect(SOCKET_PATH)
-            print(f"Connected to server at {SOCKET_PATH}")
-        except Exception as e:
-            print(f"Error: {e}")
-
-    def start_scene(self, scene_data):
-        message = construct_message("START", scene_data)
-        try:
-            self.client_sock.sendall(message.encode('utf-8'))
-        except Exception as e:
-            print(f"Error: {e}")
-
-    def end_scene(self):
-        pass
-
-    def update_scene(self, update_data):
-        pass
-
-    def draw_scene(self, camera, dimensions):
-
-        draw_data = {"camera":camera, "dimensions":dimensions}
-
-        message = construct_message("DRAW", draw_data)
-        try:
-            self.client_sock.sendall(message.encode('utf-8'))
-        except Exception as e:
-            print(f"Error: {e}")
-
-    def recv(self):
-        delimiter = b'\n\r\n\r'
-        received_data = b''
         while True:
-            chunk = self.client_sock.recv(4096*2)
-            if not chunk:
-                raise ConnectionError("Connection closed before the complete message was received.")
-            
-            received_data += chunk
-            if delimiter in received_data:
-                message, _, _ = received_data.partition(delimiter)
-                return message
-     
+            try:
+                self.client_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.client_sock.setblocking(True)
+                self.client_sock.connect(SOCKET_PATH)
+                print(f"Connected to server at {SOCKET_PATH}")
+                break
+            except socket.error as e:
+                print(f"Connection failed: {e}. Retrying in 1 second...")
+                time.sleep(1)
 
-API_ENUM = [
-            "UPDATE",
-            "DRAW",
-            "START",
-            "STOP"
-]
+        self.stream = bytearray()
+        self.headerStruct = struct.Struct( "=IB" )
+        self.HEADER_SIZE = 5
 
-def construct_message(cmd:str="", data=""):
-    if cmd not in API_ENUM:
-        raise Exception("cmd not found!")
-        return
-    
-    message = {"cmd":cmd, "data":data}
-    return json.dumps(message) + '\n\r\n\r'
+    def disconnect(self):
+        self.client_sock.close
+        
+
+    def send_data(self, messageType, data):
+        assert( messageType < ClientMessage.NumClientMessages )
+
+        if data == None:
+            sizeBytes = 0
+            data = bytes(0)
+        else:
+            sizeBytes = len(data)
+
+        packet = self.headerStruct.pack( sizeBytes, messageType )
+
+        self.client_sock.send( b''.join( (packet, data) ) )
+
+    #Stolen from DERGO renderer
+    def receive_data(self, callbackObj):
+
+        chunk = self.client_sock.recv(4096*2)
+        if not chunk:
+            raise ConnectionError("Connection closed before the complete message was received.")
+        
+        self.stream.extend(chunk)
+
+        remainingBytes = len(self.stream)
+        while remainingBytes >= self.HEADER_SIZE:
+            header = self.headerStruct.unpack_from( memoryview( self.stream ) )
+            header_sizeBytes	= header[0]
+            header_messageType	= header[1]
+            #print(header_sizeBytes, header_messageType)
+			
+            if header_sizeBytes > remainingBytes - self.HEADER_SIZE:
+                # Packet is incomplete. Process it the next time.
+                break
+
+            if header_messageType >= ServerMessage.NumServerMessages:
+                raise RuntimeError( "Message type is higher than NumServerMessages. Message is corrupt!!!" )
+
+            callbackObj.processMessage( header_sizeBytes, header_messageType,
+                                        self.stream[self.HEADER_SIZE:(self.HEADER_SIZE + header_sizeBytes)] )
+
+            remainingBytes -= self.HEADER_SIZE
+            remainingBytes -= header_sizeBytes
+
+            self.stream = self.stream[(self.HEADER_SIZE + header_sizeBytes):]
