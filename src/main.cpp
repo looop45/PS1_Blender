@@ -51,7 +51,6 @@ int render_loop(CommandQueue& command_queue, std::shared_ptr<PixelBuffer> pixelB
     Engine engine(pixelBuffer);
     std::cout << "Server: Render loop running. Engine started." << std::endl;
 
-
     while (running) 
     {
         std::shared_ptr<Command> cmd;
