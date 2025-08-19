@@ -18,9 +18,11 @@ from .ui.operators import register_operators, unregister_operators
 from .ui.panel_material import register_material_panel, unregister_material_panel
 from .ui.header import register_header, unregister_header
 from .ui.handlers import register_handlers, unregister_handlers
+from .nodes.sockets import register_sockets, unregister_sockets
 
 def register():
     register_node_tree()
+    register_sockets()
     register_nodes()
     register_engine()
     register_operators()
@@ -34,5 +36,6 @@ def unregister():
     unregister_material_panel()
     unregister_engine()
     unregister_nodes()
+    unregister_sockets()
     unregister_operators()
     unregister_node_tree()

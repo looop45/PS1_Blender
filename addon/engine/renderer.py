@@ -4,6 +4,7 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 from gpu.types import GPUShader, GPUBatch, GPUVertBuf, GPUIndexBuf
 from mathutils import Matrix
+from ..engine.compile import compile_tree
 
 class PS1RenderEngine(bpy.types.RenderEngine):
     bl_idname = "PS1"
@@ -13,6 +14,8 @@ class PS1RenderEngine(bpy.types.RenderEngine):
     
     display_thread = None
     connected = False
+
+    shaders = {}
 
     def __init__(self):
         self.shader = None
@@ -51,14 +54,17 @@ class PS1RenderEngine(bpy.types.RenderEngine):
         
         mesh.calc_loop_triangles()
 
-        obj.matrix_world.copy()
+        #obj.matrix_world.copy()
 
-        verts = [v.co[:] for v in mesh.vertices]
-        tris = [loop.vertex_index for tri in mesh.loop_triangles for loop in tri.loops]
-        normals = [v.normal[:] for v in mesh.vertices]
+        vertices = np.empty((len(mesh.vertices), 3), 'f')
+        indices = np.empty((len(mesh.loop_triangles), 3), 'i')
+
+        mesh.vertices.foreach_get("co", np.reshape(vertices, len(mesh.vertices) * 3))
+        mesh.loop_triangles.foreach_get("vertices", np.reshape(indices, len(mesh.loop_triangles) * 3))
         
         # Upload to GPU
-        self.objects[obj] = batch_for_shader(self.get_shader(), 'TRIS', {"position": verts}, indices=tris)
+        shader = self.get_shader(obj)
+        self.objects[obj] = batch_for_shader(self.get_shader(obj), 'TRIS', {"pos": vertices}, indices=indices)
         eval_obj.to_mesh_clear()
 
     # For viewport renders, this method is called whenever Blender redraws
@@ -82,25 +88,33 @@ class PS1RenderEngine(bpy.types.RenderEngine):
         fb.clear(color=(0, 0, 0, 1))
 
         for obj, batch in self.objects.items():
-            shader = self.get_shader()
-            shader.bind()
-            matrix = bpy.context.region_data.perspective_matrix
-            shader.uniform_float("viewProjectionMatrix", matrix)
-            shader.uniform_float("modelMatrix", obj.matrix_world)
-            shader.uniform_float("color", (1, 0.2, 0.1, 1))
-            batch.draw(shader)
+            if obj.type == 'MESH':
+                shader = self.get_shader(obj)
+                shader.bind()
+                matrix = bpy.context.region_data.perspective_matrix
+                shader.uniform_float("viewProjectionMatrix", matrix)
+                shader.uniform_float("modelMatrix", obj.matrix_world)
+                batch.draw(shader)
         
         gpu.state.depth_test_set('NONE')
         self.unbind_display_space_shader()
 
-    def get_shader(self):
-        if not self.shader:
+    def create_shader(self, obj):
+        print("COMPILING SHADER")
             shader_info = gpu.types.GPUShaderCreateInfo()
             shader_info.push_constant('MAT4', "viewProjectionMatrix")
             shader_info.push_constant('MAT4', "modelMatrix")
-            shader_info.push_constant('VEC4', "color")
+
+            tree = obj.ps1_settings.node_tree
+            if tree == None:
+                return gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
+            compile_result = compile_tree(tree)
+
+            #loop through and declare all uniforms TODO
+
             shader_info.vertex_in(0, 'VEC3', "position")
-            shader_info.fragment_out(0, 'VEC4', "FragColor")
+            #Need to bring in normals here
+            shader_info.fragment_out(0, 'VEC4', "fragColor")
 
             shader_info.vertex_source(
                 "void main()"
@@ -109,16 +123,15 @@ class PS1RenderEngine(bpy.types.RenderEngine):
                 "}"
             )
 
-            shader_info.fragment_source(
-                "void main()"
-                "{"
-                "  FragColor = color; "
-                "}"
-            )
+            shader_info.fragment_source(compile_result.as_glsl())
 
-            self.shader = gpu.shader.create_from_info(shader_info)
+            self.shaders[obj.name] = gpu.shader.create_from_info(shader_info)
             del shader_info
-        return self.shader
+
+    def get_shader(self, obj):
+        if obj.name not in self.shaders:
+            
+        return self.shaders[obj.name]
 
 
 class CustomDrawData:
