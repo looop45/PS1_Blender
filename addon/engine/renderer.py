@@ -17,7 +17,8 @@ class PS1RenderEngine(bpy.types.RenderEngine):
 
     shaders = {}
 
-    def __init__(self):
+    def __init__(self, render):
+        super().__init__(render)
         self.shader = None
         self.objects = {}
         self.initialized = False  # Track first-time setup
@@ -35,6 +36,7 @@ class PS1RenderEngine(bpy.types.RenderEngine):
             for instance in depsgraph.object_instances:
                 obj = instance.object
                 if obj.type == 'MESH':
+                    print("Uploading Mesh: " + obj.name)
                     self.upload_mesh(obj, depsgraph)
             self.initialized = True
 
@@ -43,6 +45,7 @@ class PS1RenderEngine(bpy.types.RenderEngine):
             obj = update.id
             if isinstance(obj, bpy.types.Object) and obj.type == 'MESH':
                 self.upload_mesh(obj, depsgraph)
+                self.create_shader(obj)
 
         # Remove deleted objects
         #self.objects = {obj: data for obj, data in self.objects.items() if obj in depsgraph.object_instances}
@@ -54,8 +57,6 @@ class PS1RenderEngine(bpy.types.RenderEngine):
         
         mesh.calc_loop_triangles()
 
-        #obj.matrix_world.copy()
-
         vertices = np.empty((len(mesh.vertices), 3), 'f')
         indices = np.empty((len(mesh.loop_triangles), 3), 'i')
 
@@ -64,7 +65,7 @@ class PS1RenderEngine(bpy.types.RenderEngine):
         
         # Upload to GPU
         shader = self.get_shader(obj)
-        self.objects[obj] = batch_for_shader(self.get_shader(obj), 'TRIS', {"pos": vertices}, indices=indices)
+        self.objects[obj] = batch_for_shader(self.get_shader(obj), 'TRIS', {"position": vertices}, indices=indices)
         eval_obj.to_mesh_clear()
 
     # For viewport renders, this method is called whenever Blender redraws
@@ -92,8 +93,7 @@ class PS1RenderEngine(bpy.types.RenderEngine):
                 shader = self.get_shader(obj)
                 shader.bind()
                 matrix = bpy.context.region_data.perspective_matrix
-                shader.uniform_float("viewProjectionMatrix", matrix)
-                shader.uniform_float("modelMatrix", obj.matrix_world)
+                shader.uniform_float("ModelViewProjectionMatrix", matrix @ obj.matrix_world)
                 batch.draw(shader)
         
         gpu.state.depth_test_set('NONE')
@@ -101,36 +101,39 @@ class PS1RenderEngine(bpy.types.RenderEngine):
 
     def create_shader(self, obj):
         print("COMPILING SHADER")
-            shader_info = gpu.types.GPUShaderCreateInfo()
-            shader_info.push_constant('MAT4', "viewProjectionMatrix")
-            shader_info.push_constant('MAT4', "modelMatrix")
+        shader_info = gpu.types.GPUShaderCreateInfo()
+        shader_info.push_constant('MAT4', "ModelViewProjectionMatrix")
 
-            tree = obj.ps1_settings.node_tree
-            if tree == None:
-                return gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
-            compile_result = compile_tree(tree)
+        tree = obj.original.ps1_settings.node_tree
 
-            #loop through and declare all uniforms TODO
+        if tree == None:
+            print("No tree found! Resorting to default")
+            self.shaders[obj.name] = gpu.shader.from_builtin('UNIFORM_COLOR')
+            return self.shaders[obj.name]
+        compile_result = compile_tree(tree)
 
-            shader_info.vertex_in(0, 'VEC3', "position")
-            #Need to bring in normals here
-            shader_info.fragment_out(0, 'VEC4', "fragColor")
+        #loop through and declare all uniforms TODO
 
-            shader_info.vertex_source(
-                "void main()"
-                "{"
-                "  gl_Position = viewProjectionMatrix * modelMatrix * vec4(position, 1.0f);"
-                "}"
-            )
+        shader_info.vertex_in(0, 'VEC3', "position")
+        #Need to bring in normals here
+        shader_info.fragment_out(0, 'VEC4', "fragColor")
 
-            shader_info.fragment_source(compile_result.as_glsl())
+        shader_info.vertex_source(
+            "void main()"
+            "{"
+            "  gl_Position = ModelViewProjectionMatrix * vec4(position, 1.0f);"
+            "}"
+        )
 
-            self.shaders[obj.name] = gpu.shader.create_from_info(shader_info)
-            del shader_info
+        print(compile_result.as_glsl())
+        shader_info.fragment_source(compile_result.as_glsl())
+
+        self.shaders[obj.name] = gpu.shader.create_from_info(shader_info)
+        del shader_info
 
     def get_shader(self, obj):
         if obj.name not in self.shaders:
-            
+            self.create_shader(obj)
         return self.shaders[obj.name]
 
 

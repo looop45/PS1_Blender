@@ -11,6 +11,15 @@ class PS1ShaderTree(NodeTree):
     @classmethod
     def poll(cls, context):
         return context.scene.render.engine == 'PS1'
+    
+    def update(self):
+        print("Node tree updated!")
+
+        # Manually notify dependent objects
+        for obj in bpy.data.objects:
+            if hasattr(obj, "ps1_settings"):
+                if obj.ps1_settings.node_tree == self:
+                    obj.update_tag()
 
 '''Add custom node tree as property of objects'''
 class PS1ObjectSettings(bpy.types.PropertyGroup):

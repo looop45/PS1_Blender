@@ -1,6 +1,12 @@
 import bpy
 from bpy.types import NodeSocket
 
+'''Method for triggering updates in the depsgraph'''
+def update_callback(self, context):
+    # Notify the tree that something has changed
+    if self.id_data:
+        self.id_data.update()
+
 class PS1SocketFloat(NodeSocket):
     bl_idname = "PS1SocketFloat"
     bl_label = "Float Socket"
@@ -9,7 +15,8 @@ class PS1SocketFloat(NodeSocket):
         name="Float",
         default=1.0,
         min=0.0,
-        max=1.0
+        max=1.0,
+        update=update_callback
     )
 
     def draw(self, context, layout, node, text):
@@ -28,7 +35,8 @@ class PS1SocketColor(NodeSocket):
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
-        max=1.0
+        max=1.0,
+        update=update_callback
     )
 
     def draw(self, context, layout, node, text):

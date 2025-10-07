@@ -1,15 +1,17 @@
 bl_info = {
-    "name": "PS1_Renderer",
+    "name": "PS1_Blender",
     "description": "An open-source renderer that mimics the unique style and limitations of the PS1 hardware.",
     "author": "Conner Murray",
     "version": (0, 0, 1),
-    "blender": (4, 3, 2), 
+    "blender": (4, 5, 1), 
     "location": "Info > RenderEngine",
     "warning": "Still under development", # used for warning icon and text in addons panel
     "category": "Render"}
 
 import bpy
 import os
+
+import importlib
 
 from .engine.renderer import register_engine, unregister_engine
 from .nodes.basic_nodes import register_nodes, unregister_nodes
@@ -19,6 +21,12 @@ from .ui.panel_material import register_material_panel, unregister_material_pane
 from .ui.header import register_header, unregister_header
 from .ui.handlers import register_handlers, unregister_handlers
 from .nodes.sockets import register_sockets, unregister_sockets
+
+from .engine import renderer
+
+
+def reload_modules():
+    importlib.reload(renderer)
 
 def register():
     register_node_tree()

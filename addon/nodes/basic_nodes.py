@@ -3,12 +3,19 @@ from bpy.types import Node
 from .sockets import *
 from ..engine.compile import get_variable_name
 
+import string 
+
 #Mix in class for polling
 class PS1TreeNode:
     @classmethod
     def poll(cls, ntree):
         return ntree.bl_idname == 'ps1ShaderTree'
     
+    def update(self):
+        # Notify the tree that something has changed
+        if self.id_data:
+            self.id_data.update()
+
 
 class PS1ShaderOutputNode(PS1TreeNode, Node):
     '''Final output node for PS1 materials.'''
@@ -37,9 +44,8 @@ class PS1ShaderOutputNode(PS1TreeNode, Node):
         return "Output"
     
     def compile(self, inputs):
-        color = self.inputs.get("Color", "vec3(0.0)")
-        #return f"vec3 out_col = {color};", "out_col"
-        return ""
+        color = inputs.get("Color", "vec3(0.0)")
+        return f"vec3 out_col = {color};", "out_col"
 
 '''Image Texture Node'''
 class PS1TextureNode(PS1TreeNode, Node):
@@ -86,7 +92,8 @@ class PS1ColorNode(PS1TreeNode, Node):
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
-        max=1.0
+        max=1.0,
+        update=update_callback
     )
 
     def init(self, context):
@@ -101,7 +108,7 @@ class PS1ColorNode(PS1TreeNode, Node):
     
     def compile(self, inputs):
         r, g, b, _ = self.color
-        out_var = f"{self.name}_color"
+        out_var = f"{get_variable_name(self)}_color"
         code = f"vec3 {out_var} = vec3({r:.4f}, {g:.4f}, {b:.4f});" #vec3 for now
         return code, out_var
     
@@ -109,7 +116,7 @@ class PS1MixRGBNode(PS1TreeNode, Node):
     '''Mix RGB Node for PS1 Materials.'''
 
     bl_idname = "ps1_mix_rgb"
-    bl_label = "Mix RGB"
+    bl_label = "MixRGB"
     bl_icon = 'NODE_COMPOSITING'
 
     blend_mode: bpy.props.EnumProperty( # type: ignore

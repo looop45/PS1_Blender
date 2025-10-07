@@ -1,4 +1,5 @@
 import bpy
+import re
 
 class PS1CompileResult:
     def __init__(self):
@@ -44,7 +45,7 @@ def topological_sort(output_node):
 def get_variable_name(node):
         var_name = node.name
         var_name = var_name.lower()
-        var_name.replace(" ", '_')
+        var_name = re.sub('[^A-Za-z0-9]+', '', var_name)
         return var_name
 
 def compile_tree(tree):
